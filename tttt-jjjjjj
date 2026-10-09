@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>MINI GTA 6 - REAL POLICE</title>
+<style>
+*{margin:0;padding:0;touch-action:none;user-select:none}
+body{background:#000;overflow:hidden;font-family:Arial}
+canvas{display:block}
+#hud{position:fixed;top:0;left:0;right:0;padding:10px 15px;color:#fff;display:flex;justify-content:space-between;z-index:10;background:linear-gradient(#000,transparent);font-family:Arial Black}
+#left{position:fixed;left:15px;bottom:15px;width:130px;height:130px;border-radius:50%;background:#fff1;border:2px solid #fff3;z-index:10}
+#stick{position:absolute;left:40px;top:40px;width:50px;height:50px;background:#fff;border-radius:50%}
+#right{position:fixed;right:15px;bottom:15px;display:flex;gap:10px;z-index:10}
+.b{width:70px;height:70px;border-radius:50%;background:#fff1;border:2px solid #fff5;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold}
+#bGas{width:85px;height:85px;background:#0f03;border-color:#0f0}
+#start{position:fixed;inset:0;background:#000d;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;z-index:100}
+#start button{padding:15px 40px;font-size:20px;margin-top:20px;background:#0f0;border:none;border-radius:30px;font-family:Arial Black}
+</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+</head>
+<body>
+<div id="start"><h1>MINI GTA 6</h1><p>REAL POLICE CHASE</p><p style="font-size:12px;margin-top:10px">WASD to drive, E to enter car</p><button onclick="this.parentElement.style.display='none';start()">START GAME</button></div>
+<div id="hud"><div>SPEED: <b id="sp">0</b> | CASH: $<b id="cash">0</b></div><div style="color:#f00">WANTED: <span id="w">☆☆☆☆☆</span></div><div>HEALTH: <b id="hp">100</b></div></div>
+<div id="left"><div id="stick"></div></div>
+<div id="right"><div class="b" id="bExit">EXIT</div><div class="b" id="bEnter">ENTER CAR</div><div class="b" id="bGas">GAS</div></div>
+<script type="module">
+import * as THREE from 'three';
+let scene, cam, ren, player, cars=[], cops=[], playerInCar=null;
+let keys={};
+function start(){
+scene=new THREE.Scene(); scene.background=new THREE.Color(0x87CEEB); scene.fog=new THREE.Fog(0x87CEEB, 80, 400);
+cam=new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 1000);
+ren=new THREE.WebGLRenderer({antialias:true}); ren.setSize(innerWidth,innerHeight); ren.shadowMap.enabled=true;
+document.body.appendChild(ren.domElement);
+scene.add(new THREE.AmbientLight(0xffffff,0.8));
+let sun=new THREE.DirectionalLight(0xffffff,1); sun.position.set(50,100,50); sun.castShadow=true; scene.add(sun);
+let ground=new THREE.Mesh(new THREE.PlaneGeometry(2000,2000), new THREE.MeshStandardMaterial({color:0x2a2a2a})); ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+// buildings
+for(let i=0;i<80;i++){let h=10+Math.random()*40; let b=new THREE.Mesh(new THREE.BoxGeometry(15, h, 15), new THREE.MeshStandardMaterial({color:0x555555})); b.position.set((Math.random()-0.5)*600, h/2, (Math.random()-0.5)*600); if(b.position.length()>40) scene.add(b);}
+// player
+player={mesh:new THREE.Group(), x:0, z:0, angle:0, speed:0, money:0, wanted:0, health:100, onFoot:true};
+let body=new THREE.Mesh(new THREE.CapsuleGeometry(0.5,1,4,8), new THREE.MeshStandardMaterial({color:0x00ff00})); body.position.y=1.5; player.mesh.add(body); scene.add(player.mesh);
+// car creator - REAL LOOK
+function makeCar(col, isCop=false){
+ let g=new THREE.Group();
+ let m=new THREE.MeshStandardMaterial({color:col, metalness:0.8, roughness:0.2});
+ let low=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.6,4.5), m); low.position.y=0.6; low.castShadow=true; g.add(low);
+ let top=new THREE.Mesh(new THREE.BoxGeometry(1.8,0.5,2), new THREE.MeshStandardMaterial({color:isCop?0xffffff:0x111111})); top.position.set(0,1.2,-0.3); g.add(top);
+ let w=new THREE.CylinderGeometry(0.4,0.4,0.3,12); let wm=new THREE.MeshStandardMaterial({color:0x111111});
+ [[-1.1,1.3],[1.1,1.3],[-1.1,-1.3],[1.1,-1.3]].forEach(p=>{let wheel=new THREE.Mesh(w,wm); wheel.rotation.z=Math.PI/2; wheel.position.set(p[0],0.4,p[1]); g.add(wheel);});
+ if(isCop){let bar=new THREE.Mesh(new THREE.BoxGeometry(1.5,0.15,0.25), new THREE.MeshStandardMaterial({color:0xff0000, emissive:0xff0000, emissiveIntensity:3})); bar.position.set(0,1.5,-0.3); g.add(bar); g.userData.bar=bar;}
+ return g;
+}
+for(let i=0;i<8;i++){let c=makeCar(0xcc0000+Math.random()*0x333333); c.position.set((Math.random()-0.5)*300,0,(Math.random()-0.5)*300); c.userData={angle:Math.random()*6, speed:0}; scene.add(c); cars.push(c);}
+for(let i=0;i<4;i++){let c=makeCar(0x111111,true); c.position.set((Math.random()-0.5)*400,0,(Math.random()-0.5)*400); c.userData={angle:0, speed:0}; scene.add(c); cops.push(c);}
+
+// controls
+let left=document.getElementById('left'), stick=document.getElementById('stick'), input={jx:0, gas:0};
+left.addEventListener('touchmove',e=>{e.preventDefault(); let r=left.getBoundingClientRect(); let t=e.touches[0]; let dx=t.clientX-(r.left+65), dy=t.clientY-(r.top+65); let d=Math.hypot(dx,dy); if(d>45){dx=dx/d*45; dy=dy/d*45} stick.style.left=40+dx+'px'; stick.style.top=40+dy+'px'; input.jx=dx/45; input.gas=dy<-10?1:0;},{passive:false});
+left.addEventListener('touchend',()=>{input.jx=0; input.gas=0; stick.style.left='40px'; stick.style.top='40px';});
+document.getElementById('bGas').addEventListener('touchstart',()=>input.gas=1); document.getElementById('bGas').addEventListener('touchend',()=>input.gas=0);
+document.getElementById('bEnter').addEventListener('click',()=>{let near=cars.concat(cops).find(c=>c.position.distanceTo(player.mesh.position)<6); if(near){playerInCar=near; player.onFoot=false; player.mesh.visible=false;}});
+document.getElementById('bExit').addEventListener('click',()=>{if(playerInCar){player.mesh.position.copy(playerInCar.position).add(new THREE.Vector3(3,0,0)); playerInCar=null; player.onFoot=true; player.mesh.visible=true;}});
+
+window.addEventListener('keydown',e=>{keys[e.code]=true; if(e.code=='KeyE'){let near=cars.concat(cops).find(c=>c.position.distanceTo(player.mesh.position)<6); if(near&&player.onFoot){playerInCar=near; player.onFoot=false; player.mesh.visible=false;} else if(!player.onFoot){player.mesh.position.copy(playerInCar.position).add(new THREE.Vector3(3,0,0)); playerInCar=null; player.onFoot=true; player.mesh.visible=true;}}});
+window.addEventListener('keyup',e=>keys[e.code]=false);
+
+function loop(){
+ requestAnimationFrame(loop);
+ let dt=0.016;
+ if(playerInCar){
+   if(keys['KeyW']||input.gas) playerInCar.userData.speed=Math.min(6, playerInCar.userData.speed+0.08);
+   else playerInCar.userData.speed*=0.97;
+   if(keys['KeyS']) playerInCar.userData.speed=Math.max(-2, playerInCar.userData.speed-0.1);
+   if(Math.abs(playerInCar.userData.speed)>0.1){
+     if(keys['KeyA']||input.jx< -0.2) playerInCar.userData.angle+=0.05;
+     if(keys['KeyD']||input.jx>0.2) playerInCar.userData.angle-=0.05;
+   }
+   playerInCar.position.x+=Math.sin(playerInCar.userData.angle)*playerInCar.userData.speed;
+   playerInCar.position.z+=Math.cos(playerInCar.userData.angle)*playerInCar.userData.speed;
+   playerInCar.rotation.y=playerInCar.userData.angle;
+   player.x=playerInCar.position.x; player.z=playerInCar.position.z;
+   if(playerInCar.userData.speed>3) player.wanted=Math.min(5, player.wanted+0.002);
+ } else {
+   let mv=0; if(keys['KeyW']) mv=0.12; if(keys['KeyS']) mv=-0.08;
+   if(keys['KeyA']) player.angle+=0.07; if(keys['KeyD']) player.angle-=0.07;
+   if(input.jx){player.angle-=input.jx*0.07; mv=0.12;}
+   player.mesh.position.x+=Math.sin(player.angle)*mv*5; player.mesh.position.z+=Math.cos(player.angle)*mv*5;
+   player.mesh.rotation.y=player.angle; player.x=player.mesh.position.x; player.z=player.mesh.position.z;
+ }
+ // cops AI
+ cops.forEach(c=>{
+   let dx=player.x-c.position.x, dz=player.z-c.position.z, dist=Math.hypot(dx,dz);
+   let ang=Math.atan2(dx,dz); let diff=ang-c.userData.angle; while(diff>3.14)diff-=6.28; while(diff<-3.14)diff+=6.28; c.userData.angle+=diff*0.04;
+   if(dist>5 && player.wanted>0.5){c.userData.speed=Math.min(4, c.userData.speed+0.03); c.position.x+=Math.sin(c.userData.angle)*c.userData.speed; c.position.z+=Math.cos(c.userData.angle)*c.userData.speed;}
+   c.rotation.y=c.userData.angle;
+   if(c.userData.bar){c.userData.bar.material.emissiveIntensity=Math.sin(Date.now()*0.01)*2+3;}
+   if(dist<5 && player.wanted>0) player.health-=0.05;
+ });
+ let target=playerInCar?playerInCar.position:player.mesh.position;
+ let camPos=new THREE.Vector3(target.x - Math.sin(playerInCar?playerInCar.userData.angle:player.angle)*15, 8, target.z - Math.cos(playerInCar?playerInCar.userData.angle:player.angle)*15);
+ cam.position.lerp(camPos,0.1); cam.lookAt(target);
+ document.getElementById('sp').innerText=Math.floor(Math.abs((playerInCar?playerInCar.userData.speed:0)*40));
+ document.getElementById('cash').innerText=player.money; document.getElementById('hp').innerText=Math.floor(player.health);
+ document.getElementById('w').innerText='★'.repeat(Math.floor(player.wanted))+'☆'.repeat(5-Math.floor(player.wanted));
+ if(player.health<=0){alert('WASTED!'); location.reload();}
+ ren.render(scene,cam);
+} loop();
+}
+</script>
+</body>
+</html>
